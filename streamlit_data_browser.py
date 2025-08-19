@@ -88,7 +88,35 @@ def generate_sample_data(n_samples=1000, random_state=42):
         chosen_name = np.random.choice(study_name_assignments[(loc, yr)])
         study_names.append(chosen_name)
     
+    # Add data origin paths - 2 paths per location
+    np.random.seed(random_state + 2)  # Different seed for paths
+    
+    # Define directory paths for each location
+    location_paths = {
+        'ORNL': [
+            '/projects/fusion/cgyro/ornl_hpc_cluster/tokamak_runs',
+            '/data/plasma_physics/ornl_summit/gyrokinetic_sims'
+        ],
+        'NERSC': [
+            '/global/cfs/cdirs/m3876/cgyro_production/runs',
+            '/pscratch/sd/plasma/nersc_perlmutter/cgyro_data'
+        ],
+        'ANL': [
+            '/lus/theta-fs0/projects/plasma_turb/cgyro_anl',
+            '/gpfs/mira-home/fusion_modeling/anl_polaris/sims'
+        ]
+    }
+    
+    # Assign paths to each entry based on location
+    data_origins = []
+    for i in range(n_samples):
+        loc = locations[i]
+        # Randomly choose one of the 2 paths for this location
+        chosen_path = np.random.choice(location_paths[loc])
+        data_origins.append(chosen_path)
+    
     data['study_name'] = study_names
+    data['data_origin'] = data_origins
     
     # Add time-dependent functions: QI(t) = QI + sin(t), QE(t) = QE + cos(t)
     # Create time array with 64 points from 0 to 30
@@ -110,7 +138,7 @@ def generate_sample_data(n_samples=1000, random_state=42):
     
     # Add index as entry ID
     data['entry_id'] = range(1, n_samples + 1)
-    data = data[['entry_id', 'location', 'year', 'study_name'] + [col for col in data.columns if col not in ['entry_id', 'location', 'year', 'study_name']]]
+    data = data[['entry_id', 'location', 'year', 'study_name', 'data_origin'] + [col for col in data.columns if col not in ['entry_id', 'location', 'year', 'study_name', 'data_origin']]]
     
     return data
 
@@ -213,219 +241,6 @@ def main():
     st.title("📊 CGYRO-AI")
     st.markdown("*Interactive data exploration with filtering, visualization, and statistical analysis*")
     
-    # Add download button for source code
-    with st.sidebar:
-        st.markdown("---")
-        st.subheader("📥 Download")
-        
-        # Get the current source code
-        source_code = '''import streamlit as st
-import pandas as pd
-import numpy as np
-import plotly.express as px
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
-from scipy import stats
-from sklearn.preprocessing import StandardScaler
-from sklearn.decomposition import PCA
-from sklearn.gaussian_process import GaussianProcessRegressor
-from sklearn.gaussian_process.kernels import RBF, WhiteKernel, ConstantKernel
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
-import warnings
-warnings.filterwarnings('ignore')
-
-# Set page configuration
-st.set_page_config(
-    page_title="CGYRO-AI",
-    page_icon="📊",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
-
-@st.cache_data
-def generate_sample_data(n_samples=1000, random_state=42):
-    """Generate synthetic dataset with correlations between inputs and outputs"""
-    np.random.seed(random_state)
-    
-    # Generate input attributes with realistic CGYRO parameter ranges
-    RMIN = np.random.uniform(0.2, 0.9, n_samples)
-    RMAJ = np.random.uniform(1.0, 4.0, n_samples)
-    SHEAR = np.random.uniform(0.1, 3.0, n_samples)
-    KAPPA = np.random.uniform(1.0, 2.0, n_samples)
-    
-    # Create outputs with physics-based functional dependencies
-    # Add small amount of noise to simulate measurement/computational uncertainty
-    noise1 = np.random.normal(0, 0.1, n_samples)
-    noise2 = np.random.normal(0, 0.1, n_samples)
-    
-    QI = KAPPA * (np.sin(RMIN) + np.exp(RMAJ) + SHEAR**2) + noise1
-    QE = KAPPA * (2*np.sin(RMIN) + np.exp(1/RMAJ) + SHEAR**3) + noise2
-    
-    # Create DataFrame
-    data = pd.DataFrame({
-        'RMIN': RMIN,
-        'RMAJ': RMAJ,
-        'SHEAR': SHEAR,
-        'KAPPA': KAPPA,
-        'QI': QI,
-        'QE': QE
-    })
-    
-    # Add metadata
-    locations = np.random.choice(['ORNL', 'NERSC', 'ANL'], n_samples, p=[0.4, 0.35, 0.25])
-    years = np.random.choice([2022, 2023, 2024, 2025], n_samples, p=[0.2, 0.3, 0.35, 0.15])
-    
-    data['location'] = locations
-    data['year'] = years
-    
-    # Add time-dependent functions: QI(t) = QI + sin(t), QE(t) = QE + cos(t)
-    # Create time array with 64 points from 0 to 30
-    t_values = np.linspace(0, 30, 64)
-    
-    # For each entry, create time series data
-    QI_time_series = []
-    QE_time_series = []
-    
-    for i in range(n_samples):
-        qi_t = QI[i] + np.sin(t_values)
-        qe_t = QE[i] + np.cos(t_values)
-        QI_time_series.append(qi_t)
-        QE_time_series.append(qe_t)
-    
-    data['QI_time_series'] = QI_time_series
-    data['QE_time_series'] = QE_time_series
-    data['t_values'] = [t_values] * n_samples  # Same time array for all entries
-    
-    # Add index as entry ID
-    data['entry_id'] = range(1, n_samples + 1)
-    data = data[['entry_id', 'location', 'year'] + [col for col in data.columns if col not in ['entry_id', 'location', 'year']]]
-    
-    return data
-
-@st.cache_data
-def train_gaussian_process_model(data, test_size=0.2, random_state=42):
-    """Train Gaussian Process model optimized for CGYRO data"""
-    
-    # Prepare features and targets
-    X = data[['RMIN', 'RMAJ', 'SHEAR', 'KAPPA']].values
-    y_QI = data['QI'].values
-    y_QE = data['QE'].values
-    
-    # Split data
-    X_train, X_test, y_QI_train, y_QI_test, y_QE_train, y_QE_test = train_test_split(
-        X, y_QI, y_QE, test_size=test_size, random_state=random_state
-    )
-    
-    # Standardize features
-    scaler = StandardScaler()
-    X_train_scaled = scaler.fit_transform(X_train)
-    X_test_scaled = scaler.transform(X_test)
-    X_scaled = scaler.transform(X)
-    
-    # Gaussian Process with ARD kernel
-    kernel = ConstantKernel(1.0) * RBF([1.0, 1.0, 1.0, 1.0], length_scale_bounds=(1e-1, 1e1)) + WhiteKernel(1e-5)
-    
-    gp_QI = GaussianProcessRegressor(
-        kernel=kernel, 
-        n_restarts_optimizer=3,
-        alpha=1e-6,
-        random_state=random_state
-    )
-    gp_QE = GaussianProcessRegressor(
-        kernel=kernel, 
-        n_restarts_optimizer=3,
-        alpha=1e-6,
-        random_state=random_state
-    )
-    
-    gp_QI.fit(X_train_scaled, y_QI_train)
-    gp_QE.fit(X_train_scaled, y_QE_train)
-    
-    # Predictions with uncertainty
-    y_QI_pred, y_QI_std = gp_QI.predict(X_scaled, return_std=True)
-    y_QE_pred, y_QE_std = gp_QE.predict(X_scaled, return_std=True)
-    
-    models = {'QI': gp_QI, 'QE': gp_QE, 'scaler': scaler}
-    predictions = {
-        'QI_pred': y_QI_pred, 'QI_std': y_QI_std,
-        'QE_pred': y_QE_pred, 'QE_std': y_QE_std
-    }
-    
-    # Test set predictions for metrics
-    y_QI_test_pred, _ = gp_QI.predict(X_test_scaled, return_std=True)
-    y_QE_test_pred, _ = gp_QE.predict(X_test_scaled, return_std=True)
-    
-    metrics = {
-        'QI': {
-            'R²': r2_score(y_QI_test, y_QI_test_pred),
-            'RMSE': np.sqrt(mean_squared_error(y_QI_test, y_QI_test_pred)),
-            'MAE': mean_absolute_error(y_QI_test, y_QI_test_pred)
-        },
-        'QE': {
-            'R²': r2_score(y_QE_test, y_QE_test_pred),
-            'RMSE': np.sqrt(mean_squared_error(y_QE_test, y_QE_test_pred)),
-            'MAE': mean_absolute_error(y_QE_test, y_QE_test_pred)
-        }
-    }
-    
-    return models, predictions, metrics, (X_train, X_test, y_QI_train, y_QI_test, y_QE_train, y_QE_test)
-
-def create_pca_plot(data):
-    """Create PCA visualization"""
-    numeric_cols = ['RMIN', 'RMAJ', 'SHEAR', 'KAPPA', 'QI', 'QE']
-    
-    # Standardize the data
-    scaler = StandardScaler()
-    scaled_data = scaler.fit_transform(data[numeric_cols])
-    
-    # Perform PCA
-    pca = PCA(n_components=2)
-    pca_result = pca.fit_transform(scaled_data)
-    
-    # Create DataFrame for plotting
-    pca_df = pd.DataFrame(
-        pca_result, 
-        columns=['PC1', 'PC2']
-    )
-    
-    fig = px.scatter(
-        pca_df, x='PC1', y='PC2',
-        title=f'PCA Analysis (Explained variance: {pca.explained_variance_ratio_.sum():.2%})',
-        labels={'PC1': f'PC1 ({pca.explained_variance_ratio_[0]:.1%})',
-                'PC2': f'PC2 ({pca.explained_variance_ratio_[1]:.1%})'}
-    )
-    
-    return fig
-
-def main():
-    st.title("📊 CGYRO-AI")
-    st.markdown("*Interactive data exploration with filtering, visualization, and statistical analysis*")
-    
-    # Generate or load data (but don't train AI automatically)
-    if 'data' not in st.session_state:
-        with st.spinner("🔄 Generating 1000 CGYRO simulation entries..."):
-            st.session_state.data = generate_sample_data()
-        st.success("✅ Data generation complete!")
-    
-    data = st.session_state.data
-    
-    # [Rest of the main function code would continue here...]
-
-if __name__ == "__main__":
-    main()'''
-        
-        st.download_button(
-            label="📄 Download Source Code",
-            data=source_code,
-            file_name="cgyro_ai.py",
-            mime="text/plain",
-            help="Download the complete CGYRO-AI application source code"
-        )
-        
-        st.markdown("**To run:**")
-        st.code("""pip install streamlit pandas numpy plotly scikit-learn scipy
-streamlit run cgyro_ai.py""")
     
     # Generate or load data (but don't train AI automatically)
     if 'data' not in st.session_state:
@@ -509,29 +324,230 @@ streamlit run cgyro_ai.py""")
         step=0.1
     )
     
-    # Apply filters
-    filtered_data = data[
-        (data['location'].isin(locations)) &
-        (data['year'].isin(years)) &
-        (data['study_name'].isin(study_names)) &
-        (data['RMIN'].between(RMIN_range[0], RMIN_range[1])) &
-        (data['RMAJ'].between(RMAJ_range[0], RMAJ_range[1])) &
-        (data['SHEAR'].between(SHEAR_range[0], SHEAR_range[1])) &
-        (data['KAPPA'].between(KAPPA_range[0], KAPPA_range[1])) &
-        (data['QI'].between(QI_range[0], QI_range[1])) &
-        (data['QE'].between(QE_range[0], QE_range[1]))
+    # Apply filters (including data origin filter)
+    if 'enabled_paths' in st.session_state:
+        path_filtered_data = data[data['data_origin'].isin(st.session_state.enabled_paths)]
+    else:
+        path_filtered_data = data  # Default to all data if no path filtering set
+    
+    filtered_data = path_filtered_data[
+        (path_filtered_data['location'].isin(locations)) &
+        (path_filtered_data['year'].isin(years)) &
+        (path_filtered_data['study_name'].isin(study_names)) &
+        (path_filtered_data['RMIN'].between(RMIN_range[0], RMIN_range[1])) &
+        (path_filtered_data['RMAJ'].between(RMAJ_range[0], RMAJ_range[1])) &
+        (path_filtered_data['SHEAR'].between(SHEAR_range[0], SHEAR_range[1])) &
+        (path_filtered_data['KAPPA'].between(KAPPA_range[0], KAPPA_range[1])) &
+        (path_filtered_data['QI'].between(QI_range[0], QI_range[1])) &
+        (path_filtered_data['QE'].between(QE_range[0], QE_range[1]))
     ]
     
     # Main content area with tabs
     tab1, tab2, tab3, tab4, tab5 = st.tabs([
+        "🗂️ Data Origin",
         "📋 Data Table", 
         "📈 Scatter Plots", 
-        "📊 Distributions", 
         "⏱️ Time Series",
         "🤖 AI Predictions"
     ])
     
     with tab1:
+        st.subheader("🗂️ Data Origin Management")
+        st.markdown("*Manage data sources and directory paths for each laboratory*")
+        
+        # Initialize session state for path toggles if not exists
+        if 'enabled_paths' not in st.session_state:
+            # By default, all paths are enabled
+            all_paths = [
+                '/projects/fusion/cgyro/ornl_hpc_cluster/tokamak_runs',
+                '/data/plasma_physics/ornl_summit/gyrokinetic_sims',
+                '/global/cfs/cdirs/m3876/cgyro_production/runs',
+                '/pscratch/sd/plasma/nersc_perlmutter/cgyro_data',
+                '/lus/theta-fs0/projects/plasma_turb/cgyro_anl',
+                '/gpfs/mira-home/fusion_modeling/anl_polaris/sims'
+            ]
+            st.session_state.enabled_paths = set(all_paths)
+        
+        st.write("**Configure which data sources to include in analysis:**")
+        
+        # Create three columns for the three locations
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.subheader("🏛️ ORNL")
+            st.write("**Oak Ridge National Laboratory**")
+            
+            ornl_paths = [
+                '/projects/fusion/cgyro/ornl_hpc_cluster/tokamak_runs',
+                '/data/plasma_physics/ornl_summit/gyrokinetic_sims'
+            ]
+            
+            for path in ornl_paths:
+                path_name = path.split('/')[-1].replace('_', ' ').title()
+                is_enabled = path in st.session_state.enabled_paths
+                
+                new_state = st.checkbox(
+                    f"**{path_name}**",
+                    value=is_enabled,
+                    key=f"path_ornl_{path_name.replace(' ', '_')}",
+                    help=f"Enable/disable: {path}"
+                )
+                
+                if new_state and not is_enabled:
+                    st.session_state.enabled_paths.add(path)
+                elif not new_state and is_enabled:
+                    st.session_state.enabled_paths.discard(path)
+                
+                st.code(path, language=None)
+                st.write("")
+        
+        with col2:
+            st.subheader("🌐 NERSC")
+            st.write("**National Energy Research Scientific Computing Center**")
+            
+            nersc_paths = [
+                '/global/cfs/cdirs/m3876/cgyro_production/runs',
+                '/pscratch/sd/plasma/nersc_perlmutter/cgyro_data'
+            ]
+            
+            for path in nersc_paths:
+                path_name = path.split('/')[-1].replace('_', ' ').title()
+                is_enabled = path in st.session_state.enabled_paths
+                
+                new_state = st.checkbox(
+                    f"**{path_name}**",
+                    value=is_enabled,
+                    key=f"path_nersc_{path_name.replace(' ', '_')}",
+                    help=f"Enable/disable: {path}"
+                )
+                
+                if new_state and not is_enabled:
+                    st.session_state.enabled_paths.add(path)
+                elif not new_state and is_enabled:
+                    st.session_state.enabled_paths.discard(path)
+                
+                st.code(path, language=None)
+                st.write("")
+        
+        with col3:
+            st.subheader("⚛️ ANL")
+            st.write("**Argonne National Laboratory**")
+            
+            anl_paths = [
+                '/lus/theta-fs0/projects/plasma_turb/cgyro_anl',
+                '/gpfs/mira-home/fusion_modeling/anl_polaris/sims'
+            ]
+            
+            for path in anl_paths:
+                path_name = path.split('/')[-1].replace('_', ' ').title()
+                is_enabled = path in st.session_state.enabled_paths
+                
+                new_state = st.checkbox(
+                    f"**{path_name}**",
+                    value=is_enabled,
+                    key=f"path_anl_{path_name.replace(' ', '_')}",
+                    help=f"Enable/disable: {path}"
+                )
+                
+                if new_state and not is_enabled:
+                    st.session_state.enabled_paths.add(path)
+                elif not new_state and is_enabled:
+                    st.session_state.enabled_paths.discard(path)
+                
+                st.code(path, language=None)
+                st.write("")
+        
+        # Filter data based on enabled paths
+        enabled_data = data[data['data_origin'].isin(st.session_state.enabled_paths)]
+        disabled_data = data[~data['data_origin'].isin(st.session_state.enabled_paths)]
+        
+        # Summary section
+        st.markdown("---")
+        st.subheader("📊 Data Source Summary")
+        
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Total Entries", len(data))
+        with col2:
+            st.metric("Enabled Entries", len(enabled_data))
+        with col3:
+            st.metric("Disabled Entries", len(disabled_data))
+        with col4:
+            st.metric("Active Paths", len(st.session_state.enabled_paths))
+        
+        # Detailed breakdown
+        if len(enabled_data) > 0:
+            st.subheader("📈 Enabled Data Breakdown")
+            
+            # Group by location and path
+            breakdown_data = []
+            for location in ['ORNL', 'NERSC', 'ANL']:
+                location_data = enabled_data[enabled_data['location'] == location]
+                if len(location_data) > 0:
+                    for path in location_data['data_origin'].unique():
+                        path_data = location_data[location_data['data_origin'] == path]
+                        breakdown_data.append({
+                            'Location': location,
+                            'Data Path': path,
+                            'Entry Count': len(path_data),
+                            'Years': ', '.join(map(str, sorted(path_data['year'].unique()))),
+                            'Study Names': ', '.join(sorted(path_data['study_name'].unique())[:3]) + ('...' if len(path_data['study_name'].unique()) > 3 else '')
+                        })
+            
+            if breakdown_data:
+                breakdown_df = pd.DataFrame(breakdown_data)
+                st.dataframe(breakdown_df, use_container_width=True, hide_index=True)
+        
+        # Management buttons
+        st.subheader("🔧 Path Management")
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            if st.button("✅ Enable All Paths", key="enable_all_paths"):
+                all_paths = set(data['data_origin'].unique())
+                st.session_state.enabled_paths = all_paths
+                st.rerun()
+        
+        with col2:
+            if st.button("❌ Disable All Paths", key="disable_all_paths"):
+                st.session_state.enabled_paths = set()
+                st.rerun()
+        
+        with col3:
+            if st.button("🔄 Reset to Default", key="reset_paths"):
+                all_paths = set(data['data_origin'].unique())
+                st.session_state.enabled_paths = all_paths
+                st.rerun()
+        
+        # Export path configuration
+        st.subheader("💾 Export Configuration")
+        
+        config_data = {
+            'enabled_paths': list(st.session_state.enabled_paths),
+            'disabled_paths': list(set(data['data_origin'].unique()) - st.session_state.enabled_paths),
+            'total_entries': len(data),
+            'enabled_entries': len(enabled_data),
+            'disabled_entries': len(disabled_data)
+        }
+        
+        import json
+        config_json = json.dumps(config_data, indent=2)
+        
+        st.download_button(
+            label="📥 Download Path Configuration",
+            data=config_json,
+            file_name="cgyro_data_origin_config.json",
+            mime="application/json",
+            help="Download current path configuration as JSON"
+        )
+        
+        # Show effect on other tabs
+        if len(disabled_data) > 0:
+            st.warning(f"⚠️ {len(disabled_data)} entries are disabled and will not appear in other analysis tabs.")
+        else:
+            st.success("✅ All data sources are enabled.")
+    
+    with tab2:
         st.subheader(f"Data Table ({len(filtered_data)} entries)")
         
         # Search functionality
@@ -654,7 +670,7 @@ streamlit run cgyro_ai.py""")
         else:
             st.warning("No data matches the current filters.")
     
-    with tab2:
+    with tab3:
         st.subheader("Scatter Plot Analysis")
         
         if len(filtered_data) > 0:
@@ -698,166 +714,6 @@ streamlit run cgyro_ai.py""")
                 st.metric("Correlation coefficient", f"{corr:.3f}")
         else:
             st.warning("No data to plot with current filters.")
-    
-    with tab3:
-        st.subheader("Distribution Analysis")
-        
-        if len(filtered_data) > 0:
-            # Variable selection
-            variables = st.multiselect(
-                "Select variables to analyze", 
-                ['RMIN', 'RMAJ', 'SHEAR', 'KAPPA', 'QI', 'QE'],
-                default=['RMIN', 'QI']
-            )
-            
-            if variables:
-                # Grouping option for metadata
-                group_by = st.selectbox(
-                    "Group distributions by:", 
-                    [None, "location", "year"]
-                )
-                
-                # Plot type selection
-                plot_type = st.radio(
-                    "Plot type", 
-                    ["Histogram", "Box Plot", "Violin Plot", "Density Plot"]
-                )
-                
-                if plot_type == "Histogram":
-                    fig = make_subplots(
-                        rows=len(variables), cols=1,
-                        subplot_titles=variables,
-                        vertical_spacing=0.1
-                    )
-                    
-                    for i, var in enumerate(variables):
-                        fig.add_trace(
-                            go.Histogram(
-                                x=filtered_data[var],
-                                name=var,
-                                nbinsx=30,
-                                opacity=0.7
-                            ),
-                            row=i+1, col=1
-                        )
-                    
-                    fig.update_layout(height=300*len(variables), showlegend=False)
-                    st.plotly_chart(fig, use_container_width=True)
-                
-                elif plot_type == "Box Plot":
-                    if group_by:
-                        # Melt data for grouped box plots
-                        melted_data = pd.melt(
-                            filtered_data, 
-                            id_vars=[group_by], 
-                            value_vars=variables,
-                            var_name='variable', 
-                            value_name='value'
-                        )
-                        
-                        fig = px.box(
-                            melted_data, 
-                            x='variable', 
-                            y='value',
-                            color=group_by,
-                            title=f"Box Plots by {group_by}"
-                        )
-                        st.plotly_chart(fig, use_container_width=True)
-                    else:
-                        fig = make_subplots(
-                            rows=1, cols=len(variables),
-                            subplot_titles=variables,
-                            horizontal_spacing=0.1
-                        )
-                        
-                        for i, var in enumerate(variables):
-                            fig.add_trace(
-                                go.Box(
-                                    y=filtered_data[var],
-                                    name=var,
-                                    boxpoints='outliers'
-                                ),
-                                row=1, col=i+1
-                            )
-                        
-                        fig.update_layout(height=400, showlegend=False)
-                        st.plotly_chart(fig, use_container_width=True)
-                
-                elif plot_type == "Violin Plot":
-                    if group_by:
-                        # Melt data for grouped violin plots
-                        melted_data = pd.melt(
-                            filtered_data, 
-                            id_vars=[group_by], 
-                            value_vars=variables,
-                            var_name='variable', 
-                            value_name='value'
-                        )
-                        
-                        fig = px.violin(
-                            melted_data, 
-                            x='variable', 
-                            y='value',
-                            color=group_by,
-                            box=True,
-                            title=f"Violin Plots by {group_by}"
-                        )
-                        st.plotly_chart(fig, use_container_width=True)
-                    else:
-                        fig = make_subplots(
-                            rows=1, cols=len(variables),
-                            subplot_titles=variables,
-                            horizontal_spacing=0.1
-                        )
-                        
-                        for i, var in enumerate(variables):
-                            fig.add_trace(
-                                go.Violin(
-                                    y=filtered_data[var],
-                                    name=var,
-                                    box_visible=True,
-                                    meanline_visible=True
-                                ),
-                                row=1, col=i+1
-                            )
-                        
-                        fig.update_layout(height=400, showlegend=False)
-                        st.plotly_chart(fig, use_container_width=True)
-                
-                elif plot_type == "Density Plot":
-                    fig = go.Figure()
-                    
-                    for var in variables:
-                        fig.add_trace(go.Histogram(
-                            x=filtered_data[var],
-                            histnorm='probability density',
-                            name=var,
-                            opacity=0.6,
-                            nbinsx=50
-                        ))
-                    
-                    fig.update_layout(
-                        title="Probability Density Functions",
-                        barmode='overlay'
-                    )
-                    st.plotly_chart(fig, use_container_width=True)
-                
-                # Statistical tests
-                st.subheader("Statistical Summary")
-                for var in variables:
-                    col1, col2, col3, col4 = st.columns(4)
-                    data_var = filtered_data[var]
-                    
-                    with col1:
-                        st.metric(f"{var} Mean", f"{data_var.mean():.3f}")
-                    with col2:
-                        st.metric(f"{var} Std", f"{data_var.std():.3f}")
-                    with col3:
-                        st.metric(f"{var} Skewness", f"{stats.skew(data_var):.3f}")
-                    with col4:
-                        st.metric(f"{var} Kurtosis", f"{stats.kurtosis(data_var):.3f}")
-        else:
-            st.warning("No data available for distribution analysis.")
     
     with tab4:
         st.subheader("⏱️ Time Series Analysis")

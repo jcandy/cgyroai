@@ -60,35 +60,35 @@ def generate_sample_data(n_samples=1000, random_state=42):
     
     # Add NAME metadata - 2 unique names per location-year combination
     np.random.seed(random_state + 1)  # Different seed for names
-    name_pool = [
-        'Fusion', 'Plasma', 'Tokamak', 'Stellarator', 'Magnetosphere', 'Ionosphere', 'Corona', 'Heliosphere',
-        'Neutron', 'Proton', 'Electron', 'Photon', 'Deuteron', 'Tritium', 'Helium', 'Hydrogen',
-        'Cyclotron', 'Synchrotron', 'Betatron', 'Accelerator', 'Collider', 'Detector', 'Spectrometer', 'Interferometer',
-        'Quantum', 'Relativity', 'Entropy', 'Thermodynamics', 'Magnetohydrodynamics', 'Kinetics', 'Dynamics', 'Mechanics',
-        'Isotope', 'Molecule', 'Catalyst', 'Polymer', 'Crystal', 'Semiconductor', 'Superconductor', 'Metamaterial',
-        'Laser', 'Maser', 'Hologram', 'Spectrum', 'Frequency', 'Amplitude', 'Wavelength', 'Resonance'
+    study_name_pool = [
+        'ITER-X', 'JET2', 'TXTR', 'Megator-7', 'SPARC-II', 'DEMO-1', 'STEP', 'ARC-3',
+        'EAST-II', 'WEST-2', 'HL-2M+', 'CFETR', 'KSTAR-2', 'JT-60SA+', 'SST-1X', 'ADITYA-II',
+        'COMPASS-U', 'FTU-2', 'TCV-X', 'MAST-U2', 'NSTX-U2', 'ST40-II', 'PEGASUS-III', 'QUEST-2',
+        'Tokamator', 'Fusionite', 'Plasmoid-X', 'Stellaris', 'Heliotron-J2', 'LHD-2', 'W7-X+', 'HSX-2',
+        'T-15MD2', 'GLOBUS-M3', 'TUMAN-3MT', 'KTM-2', 'T-10M', 'TRT', 'IR-T1M2', 'Damavand-II',
+        'HT-7U2', 'J-TEXT2', 'SINP-TM', 'HYBTOK-II', 'TCABR-2', 'NOVILLO-X', 'TBR-2', 'ISTTOK-2'
     ]
     
     # Create unique location-year combinations
     location_year_combos = list(set(zip(locations, years)))
     
-    # Assign 2 names per location-year combination
-    name_assignments = {}
+    # Assign 2 study names per location-year combination
+    study_name_assignments = {}
     for loc, yr in location_year_combos:
-        available_names = name_pool.copy()
+        available_names = study_name_pool.copy()
         np.random.shuffle(available_names)
-        name_assignments[(loc, yr)] = available_names[:2]
+        study_name_assignments[(loc, yr)] = available_names[:2]
     
-    # Assign names to each entry
-    names = []
+    # Assign study names to each entry
+    study_names = []
     for i in range(n_samples):
         loc = locations[i]
         yr = years[i]
-        # Randomly choose one of the 2 names for this location-year
-        chosen_name = np.random.choice(name_assignments[(loc, yr)])
-        names.append(chosen_name)
+        # Randomly choose one of the 2 study names for this location-year
+        chosen_name = np.random.choice(study_name_assignments[(loc, yr)])
+        study_names.append(chosen_name)
     
-    data['name'] = names
+    data['study_name'] = study_names
     
     # Add time-dependent functions: QI(t) = QI + sin(t), QE(t) = QE + cos(t)
     # Create time array with 64 points from 0 to 30
@@ -110,7 +110,7 @@ def generate_sample_data(n_samples=1000, random_state=42):
     
     # Add index as entry ID
     data['entry_id'] = range(1, n_samples + 1)
-    data = data[['entry_id', 'location', 'year', 'name'] + [col for col in data.columns if col not in ['entry_id', 'location', 'year', 'name']]]
+    data = data[['entry_id', 'location', 'year', 'study_name'] + [col for col in data.columns if col not in ['entry_id', 'location', 'year', 'study_name']]]
     
     return data
 
@@ -452,10 +452,10 @@ streamlit run cgyro_ai.py""")
         default=sorted(data['year'].unique())
     )
     
-    names = st.sidebar.multiselect(
-        "Names", 
-        options=sorted(data['name'].unique()),
-        default=sorted(data['name'].unique())
+    study_names = st.sidebar.multiselect(
+        "Study Names", 
+        options=sorted(data['study_name'].unique()),
+        default=sorted(data['study_name'].unique())
     )
     
     # Numerical filters
@@ -513,7 +513,7 @@ streamlit run cgyro_ai.py""")
     filtered_data = data[
         (data['location'].isin(locations)) &
         (data['year'].isin(years)) &
-        (data['name'].isin(names)) &
+        (data['study_name'].isin(study_names)) &
         (data['RMIN'].between(RMIN_range[0], RMIN_range[1])) &
         (data['RMAJ'].between(RMAJ_range[0], RMAJ_range[1])) &
         (data['SHEAR'].between(SHEAR_range[0], SHEAR_range[1])) &
@@ -546,7 +546,7 @@ streamlit run cgyro_ai.py""")
         
         if len(display_data) > 0:
             # Prepare data for display - only essential columns
-            table_data = display_data[['entry_id', 'location', 'year', 'name', 'QI', 'QE']].copy()
+            table_data = display_data[['entry_id', 'location', 'year', 'study_name', 'QI', 'QE']].copy()
             table_data['QI'] = table_data['QI'].round(3)
             table_data['QE'] = table_data['QE'].round(3)
             
@@ -558,7 +558,7 @@ streamlit run cgyro_ai.py""")
             table_data['Select for Time Series'] = table_data['entry_id'].isin(st.session_state.selected_for_timeseries)
             
             # Reorder columns
-            table_data = table_data[['Select for Time Series', 'entry_id', 'location', 'year', 'name', 'QI', 'QE']]
+            table_data = table_data[['Select for Time Series', 'entry_id', 'location', 'year', 'study_name', 'QI', 'QE']]
             
             st.write("**Select entries for Time Series analysis by checking the boxes:**")
             
@@ -583,9 +583,9 @@ streamlit run cgyro_ai.py""")
                         "Year",
                         help="Simulation year"
                     ),
-                    "name": st.column_config.TextColumn(
-                        "Name",
-                        help="Group identifier"
+                    "study_name": st.column_config.TextColumn(
+                        "Study Name",
+                        help="Research study identifier"
                     ),
                     "QI": st.column_config.NumberColumn(
                         "QI",
@@ -618,7 +618,7 @@ streamlit run cgyro_ai.py""")
                     selected_details = display_data[display_data['entry_id'].isin(st.session_state.selected_for_timeseries)]
                     with st.expander("Selected Entries Details", expanded=True):
                         for _, row in selected_details.iterrows():
-                            st.write(f"**Entry {row['entry_id']}** ({row['location']} {row['year']} - {row['name']})")
+                            st.write(f"**Entry {row['entry_id']}** ({row['location']} {row['year']} - {row['study_name']})")
                             col1, col2, col3, col4 = st.columns(4)
                             with col1:
                                 st.write(f"RMIN: {row['RMIN']:.3f}")
@@ -662,7 +662,7 @@ streamlit run cgyro_ai.py""")
             
             with col1:
                 x_axis = st.selectbox("X-axis", ['RMIN', 'RMAJ', 'SHEAR', 'KAPPA', 'QI', 'QE'], index=0)
-                color_by = st.selectbox("Color by", ['location', 'year', 'name'] + ['RMIN', 'RMAJ', 'SHEAR', 'KAPPA', 'QI', 'QE'], index=2)
+                color_by = st.selectbox("Color by", ['location', 'year', 'study_name'] + ['RMIN', 'RMAJ', 'SHEAR', 'KAPPA', 'QI', 'QE'], index=2)
                 
             with col2:
                 y_axis = st.selectbox("Y-axis", ['RMIN', 'RMAJ', 'SHEAR', 'KAPPA', 'QI', 'QE'], index=4)
@@ -675,7 +675,7 @@ streamlit run cgyro_ai.py""")
                 y=y_axis,
                 color=color_by,
                 size=size_by if size_by else None,
-                hover_data=['entry_id', 'location', 'year', 'name'],
+                hover_data=['entry_id', 'location', 'year', 'study_name'],
                 title=f"{y_axis} vs {x_axis}",
                 width=800,
                 height=600,
@@ -894,7 +894,7 @@ streamlit run cgyro_ai.py""")
                             fig_qi.add_trace(go.Scatter(
                                 x=t_vals, y=qi_vals,
                                 mode='lines',
-                                name=f"Entry {row['entry_id']} ({row['location']} {row['year']} - {row['name']})",
+                                name=f"Entry {row['entry_id']} ({row['location']} {row['year']} - {row['study_name']})",
                                 line=dict(width=2),
                                 hovertemplate='t=%{x:.1f}<br>QI(t)=%{y:.3f}<br>Entry %{text}<extra></extra>',
                                 text=[row['entry_id']] * len(t_vals)
@@ -948,7 +948,7 @@ streamlit run cgyro_ai.py""")
                             fig_qe.add_trace(go.Scatter(
                                 x=t_vals, y=qe_vals,
                                 mode='lines',
-                                name=f"Entry {row['entry_id']} ({row['location']} {row['year']} - {row['name']})",
+                                name=f"Entry {row['entry_id']} ({row['location']} {row['year']} - {row['study_name']})",
                                 line=dict(width=2),
                                 hovertemplate='t=%{x:.1f}<br>QE(t)=%{y:.3f}<br>Entry %{text}<extra></extra>',
                                 text=[row['entry_id']] * len(t_vals)
@@ -992,7 +992,7 @@ streamlit run cgyro_ai.py""")
                 
                 # Selected entries summary
                 st.subheader("Selected Entries Summary")
-                summary_data = selected_data[['entry_id', 'location', 'year', 'name', 'RMIN', 'RMAJ', 'SHEAR', 'KAPPA', 'QI', 'QE']].copy()
+                summary_data = selected_data[['entry_id', 'location', 'year', 'study_name', 'RMIN', 'RMAJ', 'SHEAR', 'KAPPA', 'QI', 'QE']].copy()
                 st.dataframe(summary_data, use_container_width=True, hide_index=True)
                 
                 # Statistics table
@@ -1009,7 +1009,7 @@ streamlit run cgyro_ai.py""")
                             'Entry ID': row['entry_id'],
                             'Location': row['location'],
                             'Year': row['year'],
-                            'Name': row['name'],
+                            'Study Name': row['study_name'],
                             'QI(t) Mean': qi_series.mean(),
                             'QI(t) Std': qi_series.std(),
                             'QI(t) Range': qi_series.max() - qi_series.min(),
@@ -1036,7 +1036,7 @@ streamlit run cgyro_ai.py""")
                             'entry_id': row['entry_id'],
                             'location': row['location'],
                             'year': row['year'],
-                            'name': row['name'],
+                            'study_name': row['study_name'],
                             'RMIN': row['RMIN'],
                             'RMAJ': row['RMAJ'],
                             'SHEAR': row['SHEAR'],
@@ -1256,7 +1256,7 @@ streamlit run cgyro_ai.py""")
                     st.subheader("Export Predictions")
                     
                     # Create downloadable dataset
-                    export_data = filtered_data_pred[['entry_id', 'location', 'year', 'name', 'RMIN', 'RMAJ', 'SHEAR', 'KAPPA', 'QI', 'QE', 'QI_pred', 'QE_pred']].copy()
+                    export_data = filtered_data_pred[['entry_id', 'location', 'year', 'study_name', 'RMIN', 'RMAJ', 'SHEAR', 'KAPPA', 'QI', 'QE', 'QI_pred', 'QE_pred']].copy()
                     export_data['QI_uncertainty'] = filtered_data_pred['QI_std']
                     export_data['QE_uncertainty'] = filtered_data_pred['QE_std']
                     
